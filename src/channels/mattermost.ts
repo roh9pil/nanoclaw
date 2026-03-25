@@ -1,6 +1,9 @@
 import { Client4, WebSocketClient } from '@mattermost/client';
 // @ts-ignore
 import WebSocket from 'ws';
+import fetch from 'node-fetch';
+import https from 'https';
+import { HttpsProxyAgent } from 'https-proxy-agent';
 
 import { ASSISTANT_NAME, TRIGGER_PATTERN } from '../config.js';
 import { readEnvFile } from '../env.js';
@@ -24,7 +27,13 @@ export class MattermostChannel implements Channel {
   private myUserId: string | null = null;
   private myUsername: string | null = null;
 
-  constructor(url: string, token: string, opts: ChannelOpts) {
+  constructor(
+      url: string,
+      token: string,
+      opts: ChannelOpts,
+      proxyUrl?: string,
+      rejectUnauthorized: boolean = true
+  ) {
     this.url = url;
     this.token = token;
     this.opts = opts;
@@ -33,7 +42,71 @@ export class MattermostChannel implements Channel {
     this.client.setUrl(this.url);
     this.client.setToken(this.token);
 
+    let agent: HttpsProxyAgent<string> | undefined;
+    if (proxyUrl) {
+        agent = new HttpsProxyAgent(proxyUrl, { rejectUnauthorized });
+    } else if (!rejectUnauthorized) {
+    }
+
+    if (proxyUrl || !rejectUnauthorized) {
+        // Override the internal doFetch to inject the node-fetch instance and agent
+        this.client.doFetch = async (endpoint: string, options: any) => {
+            const getOpts = this.client.getOptions(options) as any;
+            if (agent) {
+                getOpts.agent = agent;
+            } else if (!rejectUnauthorized) {
+                getOpts.agent = new https.Agent({ rejectUnauthorized });
+            }
+
+            // @ts-ignore
+            const response = await fetch(endpoint, getOpts);
+            const contentType = response.headers.get('Content-Type');
+            if (contentType && contentType.includes('application/json')) {
+                return response.json();
+            }
+            return response.text();
+        };
+        this.client.doFetchWithResponse = async (endpoint: string, options: any) => {
+            const getOpts = this.client.getOptions(options) as any;
+            if (agent) {
+                getOpts.agent = agent;
+            } else if (!rejectUnauthorized) {
+                getOpts.agent = new https.Agent({ rejectUnauthorized });
+            }
+            // @ts-ignore
+            const response = await fetch(endpoint, getOpts);
+            const headers = new Map();
+            response.headers.forEach((val, key) => headers.set(key, val));
+
+            let data;
+            const contentType = response.headers.get('Content-Type');
+            if (contentType && contentType.includes('application/json')) {
+                data = await response.json();
+            } else {
+                data = await response.text();
+            }
+
+            if (response.ok || options.ignoreStatus) {
+                return { response, headers, data };
+            }
+
+            const msg = data.message || '';
+            throw new Error(`Mattermost API Error: ${msg}`);
+        };
+    }
+
     this.ws = new WebSocketClient();
+    if (agent) {
+        this.ws.config.newWebSocketFn = (wsUrl: string) => {
+            // @ts-ignore
+            return new WebSocket(wsUrl, { agent });
+        };
+    } else if (!rejectUnauthorized) {
+        this.ws.config.newWebSocketFn = (wsUrl: string) => {
+            // @ts-ignore
+            return new WebSocket(wsUrl, { rejectUnauthorized });
+        };
+    }
   }
 
   async connect(): Promise<void> {
@@ -214,14 +287,19 @@ export class MattermostChannel implements Channel {
 }
 
 registerChannel('mattermost', (opts: ChannelOpts) => {
-    const envVars = readEnvFile(['MATTERMOST_URL', 'MATTERMOST_TOKEN']);
+    const envVars = readEnvFile(['MATTERMOST_URL', 'MATTERMOST_TOKEN', 'HTTPS_PROXY', 'NODE_TLS_REJECT_UNAUTHORIZED']);
     const url = process.env.MATTERMOST_URL || envVars.MATTERMOST_URL || '';
     const token = process.env.MATTERMOST_TOKEN || envVars.MATTERMOST_TOKEN || '';
+    const proxyUrl = process.env.HTTPS_PROXY || envVars.HTTPS_PROXY || undefined;
+
+    // Default to true (safe), only disable if explicitly '0' or 'false'
+    const rejectStr = process.env.NODE_TLS_REJECT_UNAUTHORIZED || envVars.NODE_TLS_REJECT_UNAUTHORIZED || '1';
+    const rejectUnauthorized = rejectStr !== '0' && rejectStr.toLowerCase() !== 'false';
 
     if (!url || !token) {
         logger.warn('Mattermost: MATTERMOST_URL and MATTERMOST_TOKEN must be set');
         return null;
     }
 
-    return new MattermostChannel(url, token, opts);
+    return new MattermostChannel(url, token, opts, proxyUrl, rejectUnauthorized);
 });
