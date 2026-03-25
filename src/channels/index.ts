@@ -10,4 +10,7 @@
 // telegram
 import './telegram.js';
 
+// mattermost
+import './mattermost.js';
+
 // whatsapp
