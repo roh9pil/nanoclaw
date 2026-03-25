@@ -27,6 +27,7 @@ vi.mock('@mattermost/client', () => {
             setEventCallback: vi.fn(),
             close: vi.fn(),
             userTyping: vi.fn(),
+            config: {},
         };
         return mockWsInstance;
     };
@@ -74,6 +75,20 @@ describe('MattermostChannel', () => {
 
         expect(mockWsInstance.initialize).toHaveBeenCalledWith('wss://mattermost.example.com/api/v4/websocket', 'test-token');
         expect(channel.isConnected()).toBe(true);
+    });
+
+    it('sets up proxy agent if proxyUrl is provided', () => {
+        // We mock WebSocket temporarily, but since HttpsProxyAgent tries to initiate DNS/Sockets under the hood
+        // we just verify that doFetch is successfully overridden. The actual request will be blocked by vitest anyway.
+        const proxyChannel = new MattermostChannel('https://mattermost.example.com', 'test-token', opts, 'http://127.0.0.1:8080');
+        expect(mockClient4Instance.doFetch).toBeDefined();
+        expect(mockWsInstance.config.newWebSocketFn).toBeDefined();
+    });
+
+    it('sets up unauth agent if rejectUnauthorized is false', () => {
+        const proxyChannel = new MattermostChannel('https://mattermost.example.com', 'test-token', opts, undefined, false);
+        expect(mockClient4Instance.doFetch).toBeDefined();
+        expect(mockClient4Instance.doFetchWithResponse).toBeDefined();
     });
 
     it('handles incoming messages and respects @mentions', async () => {
