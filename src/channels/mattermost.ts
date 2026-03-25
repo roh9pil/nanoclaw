@@ -139,7 +139,7 @@ export class MattermostChannel implements Channel {
 
           this.ws.setErrorCallback((err: any) => {
               logger.error({ err }, 'Mattermost WebSocket error');
-              if (!this.myUserId) reject(err);
+              reject(err);
           });
 
           this.ws.setCloseCallback((...args: any) => {
