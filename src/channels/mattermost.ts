@@ -3,9 +3,9 @@ import { Client4, WebSocketClient } from '@mattermost/client';
 import WebSocket from 'ws';
 import fetch from 'node-fetch';
 import https from 'https';
-import { HttpsProxyAgent } from 'https-proxy-agent';
 
 import { ASSISTANT_NAME, TRIGGER_PATTERN } from '../config.js';
+import { CustomHttpsProxyAgent } from '../proxy.js';
 import { readEnvFile } from '../env.js';
 import { logger } from '../logger.js';
 import { registerChannel, ChannelOpts } from './registry.js';
@@ -42,14 +42,14 @@ export class MattermostChannel implements Channel {
     this.client.setUrl(this.url);
     this.client.setToken(this.token);
 
-    let agent: HttpsProxyAgent<string> | undefined;
+    let agent: CustomHttpsProxyAgent | undefined;
     if (proxyUrl) {
-        agent = new HttpsProxyAgent(proxyUrl, { rejectUnauthorized });
-    } else if (!rejectUnauthorized) {
+        agent = new CustomHttpsProxyAgent(proxyUrl, { rejectUnauthorized });
     }
 
     if (proxyUrl || !rejectUnauthorized) {
         // Override the internal doFetch to inject the node-fetch instance and agent
+        // @ts-ignore
         this.client.doFetch = async (endpoint: string, options: any) => {
             const getOpts = this.client.getOptions(options) as any;
             if (agent) {
@@ -66,6 +66,7 @@ export class MattermostChannel implements Channel {
             }
             return response.text();
         };
+        // @ts-ignore
         this.client.doFetchWithResponse = async (endpoint: string, options: any) => {
             const getOpts = this.client.getOptions(options) as any;
             if (agent) {
@@ -90,6 +91,7 @@ export class MattermostChannel implements Channel {
                 return { response, headers, data };
             }
 
+            // @ts-ignore
             const msg = data.message || '';
             throw new Error(`Mattermost API Error: ${msg}`);
         };
@@ -97,11 +99,13 @@ export class MattermostChannel implements Channel {
 
     this.ws = new WebSocketClient();
     if (agent) {
+        // @ts-ignore
         this.ws.config.newWebSocketFn = (wsUrl: string) => {
             // @ts-ignore
             return new WebSocket(wsUrl, { agent });
         };
     } else if (!rejectUnauthorized) {
+        // @ts-ignore
         this.ws.config.newWebSocketFn = (wsUrl: string) => {
             // @ts-ignore
             return new WebSocket(wsUrl, { rejectUnauthorized });

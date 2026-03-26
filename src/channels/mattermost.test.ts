@@ -62,7 +62,7 @@ describe('MattermostChannel', () => {
     });
 
     it('connects to mattermost API and WebSocket', async () => {
-        mockWsInstance.setFirstConnectCallback.mockImplementation((cb: Function) => {
+        mockWsInstance.setFirstConnectCallback.mockImplementation((cb: () => void) => {
             // Delay calling the callback so the promise can be setup
             setTimeout(cb, 0);
         });
@@ -83,7 +83,7 @@ describe('MattermostChannel', () => {
             eventCallback = cb;
         });
 
-        mockWsInstance.setFirstConnectCallback.mockImplementation((cb: Function) => setTimeout(cb, 0));
+        mockWsInstance.setFirstConnectCallback.mockImplementation((cb: () => void) => setTimeout(cb, 0));
         await channel.connect();
 
         // Ensure event callback was registered
@@ -149,7 +149,7 @@ describe('MattermostChannel', () => {
             eventCallback = cb;
         });
 
-        mockWsInstance.setFirstConnectCallback.mockImplementation((cb: Function) => setTimeout(cb, 0));
+        mockWsInstance.setFirstConnectCallback.mockImplementation((cb: () => void) => setTimeout(cb, 0));
         await channel.connect();
 
         const ownMessageEvent = {
@@ -187,7 +187,7 @@ describe('MattermostChannel', () => {
     });
 
     it('sends messages through mattermost client', async () => {
-        mockWsInstance.setFirstConnectCallback.mockImplementation((cb: Function) => setTimeout(cb, 0));
+        mockWsInstance.setFirstConnectCallback.mockImplementation((cb: () => void) => setTimeout(cb, 0));
         await channel.connect();
 
         await channel.sendMessage('mm:channel-123', 'Response text');
