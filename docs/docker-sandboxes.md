@@ -88,7 +88,6 @@ cd "$WORKSPACE/nanoclaw"
 
 # Install dependencies
 npm install
-npm install https-proxy-agent
 ```
 
 ## Step 4: Apply Proxy and Sandbox Patches
@@ -168,15 +167,7 @@ In `src/container-runtime.ts`, the `cleanupOrphans()` function matches container
 
 ### 4e. Credential proxy — route through MITM proxy
 
-In `src/credential-proxy.ts`, upstream API requests need to go through the sandbox proxy. Add `HttpsProxyAgent` to outbound requests:
-
-```typescript
-import { HttpsProxyAgent } from 'https-proxy-agent';
-
-const proxyUrl = process.env.HTTPS_PROXY || process.env.https_proxy;
-const upstreamAgent = proxyUrl ? new HttpsProxyAgent(proxyUrl) : undefined;
-// Pass upstreamAgent to https.request() options
-```
+In `src/credential-proxy.ts`, upstream API requests need to go through the sandbox proxy. Configure outbound requests to use the proxy appropriately based on your environment.
 
 ### 4f. Setup script — proxy build args
 
@@ -227,7 +218,7 @@ curl -s --proxy $HTTPS_PROXY "https://api.telegram.org/bot<TOKEN>/getUpdates" | 
 
 **Telegram in groups:** Disable Group Privacy in @BotFather (`/mybots` > Bot Settings > Group Privacy > Turn off), then remove and re-add the bot.
 
-**Important:** If the Telegram skill creates `src/channels/telegram.ts`, you'll need to patch it for proxy support. Add an `HttpsProxyAgent` and pass it to grammy's `Bot` constructor via `baseFetchConfig.agent`. Then rebuild.
+**Important:** If the Telegram skill creates `src/channels/telegram.ts`, you'll need to patch it for proxy support based on your environment. Then rebuild.
 
 ### WhatsApp
 
@@ -267,7 +258,7 @@ npx tsx setup/index.ts --step register \
   --no-trigger-required
 ```
 
-**Important:** The WhatsApp skill files (`src/channels/whatsapp.ts` and `src/whatsapp-auth.ts`) also need proxy patches — add `HttpsProxyAgent` for WebSocket connections and a proxy-aware version fetch. Then rebuild.
+**Important:** The WhatsApp skill files (`src/channels/whatsapp.ts` and `src/whatsapp-auth.ts`) also need proxy patches for WebSocket connections and a proxy-aware version fetch. Then rebuild.
 
 ### Both Channels
 
@@ -291,7 +282,7 @@ All traffic from the sandbox routes through the host proxy at `host.docker.inter
 Agent container → DinD bridge → Sandbox VM → host.docker.internal:3128 → Host proxy → api.anthropic.com
 ```
 
-**"Bypass" does not mean traffic skips the proxy.** It means the proxy passes traffic through without MITM inspection. Node.js doesn't automatically use `HTTP_PROXY` env vars — you need explicit `HttpsProxyAgent` configuration in every HTTP/WebSocket client.
+**"Bypass" does not mean traffic skips the proxy.** It means the proxy passes traffic through without MITM inspection. Node.js doesn't automatically use `HTTP_PROXY` env vars — you need explicit proxy configuration in every HTTP/WebSocket client.
 
 ### Shared paths for DinD mounts
 
@@ -329,7 +320,7 @@ All bind-mounted paths must be under the workspace directory. Check:
 Verify proxy env vars are forwarded to agent containers. Check container logs for `HTTP_PROXY=http://host.docker.internal:3128`.
 
 ### WhatsApp error 405
-The version fetch is returning a stale version. Make sure the proxy-aware `fetchWaVersionViaProxy` patch is applied — it fetches `sw.js` through `HttpsProxyAgent` and parses `client_revision`.
+The version fetch is returning a stale version. Make sure the proxy-aware `fetchWaVersionViaProxy` patch is applied — it fetches `sw.js` through your proxy and parses `client_revision`.
 
 ### WhatsApp "Connection failed" immediately
 Proxy bypass not configured. From the **host**, run:
@@ -341,7 +332,7 @@ docker sandbox network proxy <sandbox-name> \
 ```
 
 ### Telegram bot doesn't receive messages
-1. Check the grammy proxy patch is applied (look for `HttpsProxyAgent` in `src/channels/telegram.ts`)
+1. Check the grammy proxy patch is applied in `src/channels/telegram.ts`
 2. Check Group Privacy is disabled in @BotFather if using in groups
 
 ### Git clone fails with "inflate: data stream error"
