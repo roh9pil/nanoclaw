@@ -50,7 +50,9 @@ export class MattermostChannel implements Channel {
 
     if (proxyUrl || !rejectUnauthorized) {
         // Override the internal doFetch to inject the node-fetch instance and agent
+        // @ts-ignore
         this.client.doFetch = async (endpoint: string, options: any) => {
+            // @ts-ignore
             const getOpts = this.client.getOptions(options) as any;
             if (agent) {
                 getOpts.agent = agent;
@@ -66,7 +68,9 @@ export class MattermostChannel implements Channel {
             }
             return response.text();
         };
+        // @ts-ignore
         this.client.doFetchWithResponse = async (endpoint: string, options: any) => {
+            // @ts-ignore
             const getOpts = this.client.getOptions(options) as any;
             if (agent) {
                 getOpts.agent = agent;
@@ -90,18 +94,20 @@ export class MattermostChannel implements Channel {
                 return { response, headers, data };
             }
 
-            const msg = data.message || '';
+            const msg = (data as any).message || '';
             throw new Error(`Mattermost API Error: ${msg}`);
         };
     }
 
     this.ws = new WebSocketClient();
     if (agent) {
+        // @ts-ignore
         this.ws.config.newWebSocketFn = (wsUrl: string) => {
             // @ts-ignore
             return new WebSocket(wsUrl, { agent });
         };
     } else if (!rejectUnauthorized) {
+        // @ts-ignore
         this.ws.config.newWebSocketFn = (wsUrl: string) => {
             // @ts-ignore
             return new WebSocket(wsUrl, { rejectUnauthorized });
@@ -279,7 +285,9 @@ export class MattermostChannel implements Channel {
     if (!isTyping || !this.myUserId) return;
     try {
         const channelId = jid.replace(/^mm:/, '');
-        this.ws.userTyping(channelId, '');
+        // Send typing indicator directly via WebSocket message
+        // @ts-ignore
+        this.ws.sendMessage('user_typing', { channel_id: channelId, parent_id: '' });
     } catch (err) {
         logger.debug({ jid, err }, 'Failed to send Mattermost typing indicator');
     }
