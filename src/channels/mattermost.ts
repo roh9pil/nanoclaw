@@ -285,8 +285,9 @@ export class MattermostChannel implements Channel {
     if (!isTyping || !this.myUserId) return;
     try {
         const channelId = jid.replace(/^mm:/, '');
-        // Explicitly pass undefined to omit parent_id for non-thread messages
-        this.ws.userTyping(channelId, undefined as unknown as string);
+        // Send typing indicator directly via WebSocket message
+        // @ts-ignore
+        this.ws.sendMessage('user_typing', { channel_id: channelId, parent_id: '' });
     } catch (err) {
         logger.debug({ jid, err }, 'Failed to send Mattermost typing indicator');
     }
