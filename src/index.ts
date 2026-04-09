@@ -19,8 +19,9 @@ import { writeSessionMessage } from './session-manager.js';
 import { wakeContainer } from './container-runner.js';
 import { log } from './log.js';
 
-// Channel imports — each triggers self-registration
-import './channels/discord.js';
+// Channel barrel — each enabled channel self-registers on import.
+// Channel skills uncomment lines in channels/index.ts to enable them.
+import './channels/index.js';
 
 import type { ChannelAdapter, ChannelSetup, ConversationConfig } from './channels/adapter.js';
 import { initChannelAdapters, teardownChannelAdapters, getChannelAdapter } from './channels/channel-registry.js';

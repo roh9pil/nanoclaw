@@ -71,6 +71,15 @@ export function getMessagingGroupAgents(messagingGroupId: string): MessagingGrou
     .all(messagingGroupId) as MessagingGroupAgent[];
 }
 
+export function getMessagingGroupAgentByPair(
+  messagingGroupId: string,
+  agentGroupId: string,
+): MessagingGroupAgent | undefined {
+  return getDb()
+    .prepare('SELECT * FROM messaging_group_agents WHERE messaging_group_id = ? AND agent_group_id = ?')
+    .get(messagingGroupId, agentGroupId) as MessagingGroupAgent | undefined;
+}
+
 export function getMessagingGroupAgent(id: string): MessagingGroupAgent | undefined {
   return getDb().prepare('SELECT * FROM messaging_group_agents WHERE id = ?').get(id) as
     | MessagingGroupAgent

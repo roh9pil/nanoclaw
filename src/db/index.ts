@@ -20,6 +20,7 @@ export {
   createMessagingGroupAgent,
   getMessagingGroupAgents,
   getMessagingGroupAgent,
+  getMessagingGroupAgentByPair,
   updateMessagingGroupAgent,
   deleteMessagingGroupAgent,
 } from './messaging-groups.js';

@@ -1,45 +1,66 @@
 /**
- * Step: register — Write channel registration config, create group folders.
+ * Step: register — Create v2 entities (agent group, messaging group, wiring).
  *
- * Accepts --channel to specify the messaging platform (whatsapp, telegram, slack, discord).
- * Uses parameterized SQL queries to prevent injection.
+ * Writes to the v2 central DB (data/v2.db) — NOT the v1 store/messages.db.
+ * Creates: agent_group, messaging_group, messaging_group_agents.
  */
 import fs from 'fs';
 import path from 'path';
 
-import { STORE_DIR } from '../src/config.ts';
-import { initDatabase, setRegisteredGroup } from '../src/v1/db.ts';
-import { isValidGroupFolder } from '../src/group-folder.ts';
+import { DATA_DIR } from '../src/config.js';
+import { initDb } from '../src/db/connection.js';
+import { runMigrations } from '../src/db/migrations/index.js';
+import { createAgentGroup, getAgentGroupByFolder } from '../src/db/agent-groups.js';
+import {
+  createMessagingGroup,
+  createMessagingGroupAgent,
+  getMessagingGroupByPlatform,
+  getMessagingGroupAgentByPair,
+} from '../src/db/messaging-groups.js';
+import { isValidGroupFolder } from '../src/group-folder.js';
 import { log } from '../src/log.js';
-import { emitStatus } from './status.ts';
+import { emitStatus } from './status.js';
 
 interface RegisterArgs {
-  jid: string;
+  /** Platform-specific channel/group ID (Discord channel ID, Slack channel, etc.) */
+  platformId: string;
+  /** Human-readable name for the messaging group */
   name: string;
+  /** Trigger pattern (regex or keyword) */
   trigger: string;
+  /** Agent group folder name */
   folder: string;
+  /** Channel type (discord, slack, telegram, etc.) */
   channel: string;
+  /** Whether messages require the trigger pattern to activate */
   requiresTrigger: boolean;
+  /** Whether this is the admin/main agent group */
   isMain: boolean;
+  /** Display name for the assistant */
   assistantName: string;
+  /** Session mode: 'shared' (one session per channel) or 'per-thread' */
+  sessionMode: string;
 }
 
 function parseArgs(args: string[]): RegisterArgs {
   const result: RegisterArgs = {
-    jid: '',
+    platformId: '',
     name: '',
     trigger: '',
     folder: '',
-    channel: 'whatsapp', // backward-compat: pre-refactor installs omit --channel
+    channel: 'discord',
     requiresTrigger: true,
     isMain: false,
     assistantName: 'Andy',
+    sessionMode: 'shared',
   };
 
   for (let i = 0; i < args.length; i++) {
     switch (args[i]) {
+      // Accept both --jid (v1 compat) and --platform-id (v2)
       case '--jid':
-        result.jid = args[++i] || '';
+      case '--platform-id':
+        result.platformId = args[++i] || '';
         break;
       case '--name':
         result.name = args[++i] || '';
@@ -62,17 +83,24 @@ function parseArgs(args: string[]): RegisterArgs {
       case '--assistant-name':
         result.assistantName = args[++i] || 'Andy';
         break;
+      case '--session-mode':
+        result.sessionMode = args[++i] || 'shared';
+        break;
     }
   }
 
   return result;
 }
 
+function generateId(prefix: string): string {
+  return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
 export async function run(args: string[]): Promise<void> {
   const projectRoot = process.cwd();
   const parsed = parseArgs(args);
 
-  if (!parsed.jid || !parsed.name || !parsed.trigger || !parsed.folder) {
+  if (!parsed.platformId || !parsed.name || !parsed.folder) {
     emitStatus('REGISTER_CHANNEL', {
       STATUS: 'failed',
       ERROR: 'missing_required_args',
@@ -92,61 +120,88 @@ export async function run(args: string[]): Promise<void> {
 
   log.info('Registering channel', parsed);
 
-  // Ensure data and store directories exist (store/ may not exist on
-  // fresh installs that skip WhatsApp auth, which normally creates it)
+  // Init v2 central DB
   fs.mkdirSync(path.join(projectRoot, 'data'), { recursive: true });
-  fs.mkdirSync(STORE_DIR, { recursive: true });
+  const dbPath = path.join(DATA_DIR, 'v2.db');
+  const db = initDb(dbPath);
+  runMigrations(db);
 
-  // Initialize database (creates schema + runs migrations)
-  initDatabase();
+  // 1. Create or find agent group
+  let agentGroup = getAgentGroupByFolder(parsed.folder);
+  if (!agentGroup) {
+    const agId = generateId('ag');
+    createAgentGroup({
+      id: agId,
+      name: parsed.assistantName,
+      folder: parsed.folder,
+      is_admin: parsed.isMain ? 1 : 0,
+      agent_provider: null,
+      container_config: null,
+      created_at: new Date().toISOString(),
+    });
+    agentGroup = getAgentGroupByFolder(parsed.folder)!;
+    log.info('Created agent group', { id: agId, folder: parsed.folder });
+  }
 
-  setRegisteredGroup(parsed.jid, {
-    name: parsed.name,
-    folder: parsed.folder,
-    trigger: parsed.trigger,
-    added_at: new Date().toISOString(),
-    requiresTrigger: parsed.requiresTrigger,
-    isMain: parsed.isMain,
-  });
+  // 2. Create or find messaging group
+  let messagingGroup = getMessagingGroupByPlatform(parsed.channel, parsed.platformId);
+  if (!messagingGroup) {
+    const mgId = generateId('mg');
+    createMessagingGroup({
+      id: mgId,
+      channel_type: parsed.channel,
+      platform_id: parsed.platformId,
+      name: parsed.name,
+      is_group: 1,
+      admin_user_id: null,
+      created_at: new Date().toISOString(),
+    });
+    messagingGroup = getMessagingGroupByPlatform(parsed.channel, parsed.platformId)!;
+    log.info('Created messaging group', { id: mgId, channel: parsed.channel, platformId: parsed.platformId });
+  }
 
-  log.info('Wrote registration to SQLite');
+  // 3. Wire agent to messaging group
+  const existing = getMessagingGroupAgentByPair(messagingGroup.id, agentGroup.id);
+  if (!existing) {
+    const mgaId = generateId('mga');
+    const triggerRules = parsed.trigger
+      ? JSON.stringify({
+          pattern: parsed.trigger,
+          requiresTrigger: parsed.requiresTrigger,
+        })
+      : null;
+    createMessagingGroupAgent({
+      id: mgaId,
+      messaging_group_id: messagingGroup.id,
+      agent_group_id: agentGroup.id,
+      trigger_rules: triggerRules,
+      response_scope: 'all',
+      session_mode: parsed.sessionMode,
+      priority: parsed.isMain ? 10 : 0,
+      created_at: new Date().toISOString(),
+    });
+    log.info('Wired agent to messaging group', { mgaId, agentGroup: agentGroup.id, messagingGroup: messagingGroup.id });
+  }
 
-  // Create group folders
-  fs.mkdirSync(path.join(projectRoot, 'groups', parsed.folder, 'logs'), {
-    recursive: true,
-  });
+  // 4. Create group folders
+  fs.mkdirSync(path.join(projectRoot, 'groups', parsed.folder, 'logs'), { recursive: true });
 
-  // Create CLAUDE.md in the new group folder from template if it doesn't exist.
-  // The agent runs with CWD=/workspace/group and loads CLAUDE.md from there.
-  // Never overwrite an existing CLAUDE.md — users customize these extensively
-  // (persona, workspace structure, communication rules, family context, etc.)
-  // and a stock template replacement would destroy that work.
-  const groupClaudeMdPath = path.join(
-    projectRoot,
-    'groups',
-    parsed.folder,
-    'CLAUDE.md',
-  );
+  // Create CLAUDE.md from template if it doesn't exist
+  const groupClaudeMdPath = path.join(projectRoot, 'groups', parsed.folder, 'CLAUDE.md');
   if (!fs.existsSync(groupClaudeMdPath)) {
     const templatePath = parsed.isMain
       ? path.join(projectRoot, 'groups', 'main', 'CLAUDE.md')
       : path.join(projectRoot, 'groups', 'global', 'CLAUDE.md');
     if (fs.existsSync(templatePath)) {
       fs.copyFileSync(templatePath, groupClaudeMdPath);
-      log.info(
-        'Created CLAUDE.md from template',
-        { file: groupClaudeMdPath, template: templatePath },
-      );
+      log.info('Created CLAUDE.md from template', { file: groupClaudeMdPath, template: templatePath });
     }
   }
 
-  // Update assistant name in CLAUDE.md files if different from default
+  // 5. Update assistant name in CLAUDE.md files if different from default
   let nameUpdated = false;
   if (parsed.assistantName !== 'Andy') {
-    log.info(
-      'Updating assistant name',
-      { from: 'Andy', to: parsed.assistantName },
-    );
+    log.info('Updating assistant name', { from: 'Andy', to: parsed.assistantName });
 
     const groupsDir = path.join(projectRoot, 'groups');
     const mdFiles = fs
@@ -155,16 +210,11 @@ export async function run(args: string[]): Promise<void> {
       .filter((f) => fs.existsSync(f));
 
     for (const mdFile of mdFiles) {
-      if (fs.existsSync(mdFile)) {
-        let content = fs.readFileSync(mdFile, 'utf-8');
-        content = content.replace(/^# Andy$/m, `# ${parsed.assistantName}`);
-        content = content.replace(
-          /You are Andy/g,
-          `You are ${parsed.assistantName}`,
-        );
-        fs.writeFileSync(mdFile, content);
-        log.info('Updated CLAUDE.md', { file: mdFile });
-      }
+      let content = fs.readFileSync(mdFile, 'utf-8');
+      content = content.replace(/^# Andy$/m, `# ${parsed.assistantName}`);
+      content = content.replace(/You are Andy/g, `You are ${parsed.assistantName}`);
+      fs.writeFileSync(mdFile, content);
+      log.info('Updated CLAUDE.md', { file: mdFile });
     }
 
     // Update .env
@@ -172,10 +222,7 @@ export async function run(args: string[]): Promise<void> {
     if (fs.existsSync(envFile)) {
       let envContent = fs.readFileSync(envFile, 'utf-8');
       if (envContent.includes('ASSISTANT_NAME=')) {
-        envContent = envContent.replace(
-          /^ASSISTANT_NAME=.*$/m,
-          `ASSISTANT_NAME="${parsed.assistantName}"`,
-        );
+        envContent = envContent.replace(/^ASSISTANT_NAME=.*$/m, `ASSISTANT_NAME="${parsed.assistantName}"`);
       } else {
         envContent += `\nASSISTANT_NAME="${parsed.assistantName}"`;
       }
@@ -188,13 +235,14 @@ export async function run(args: string[]): Promise<void> {
   }
 
   emitStatus('REGISTER_CHANNEL', {
-    JID: parsed.jid,
+    PLATFORM_ID: parsed.platformId,
     NAME: parsed.name,
     FOLDER: parsed.folder,
     CHANNEL: parsed.channel,
     TRIGGER: parsed.trigger,
     REQUIRES_TRIGGER: parsed.requiresTrigger,
     ASSISTANT_NAME: parsed.assistantName,
+    SESSION_MODE: parsed.sessionMode,
     NAME_UPDATED: nameUpdated,
     STATUS: 'success',
     LOG: 'logs/setup.log',

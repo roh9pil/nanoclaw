@@ -58,8 +58,11 @@ export async function routeInbound(event: InboundEvent): Promise<void> {
   // 2. Resolve agent group via messaging_group_agents
   const agents = getMessagingGroupAgents(mg.id);
   if (agents.length === 0) {
-    log.warn('No agent groups configured for messaging group', {
+    // This is a common fresh-install issue: channels work but no agent group
+    // is wired to handle messages. Run setup/register to create the wiring.
+    log.warn('MESSAGE DROPPED — no agent groups wired to this channel. Run setup register step to configure.', {
       messagingGroupId: mg.id,
+      channelType: event.channelType,
       platformId: event.platformId,
     });
     return;
@@ -68,7 +71,10 @@ export async function routeInbound(event: InboundEvent): Promise<void> {
   // Pick the best matching agent (highest priority, trigger matching in future)
   const match = pickAgent(agents, event);
   if (!match) {
-    log.debug('No agent matched for message', { messagingGroupId: mg.id });
+    log.warn('MESSAGE DROPPED — no agent matched trigger rules', {
+      messagingGroupId: mg.id,
+      channelType: event.channelType,
+    });
     return;
   }
 

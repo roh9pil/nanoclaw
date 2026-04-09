@@ -11,7 +11,7 @@ import path from 'path';
 
 import Database from 'better-sqlite3';
 
-import { STORE_DIR } from '../src/config.js';
+import { DATA_DIR } from '../src/config.js';
 import { readEnvFile } from '../src/env.js';
 import { log } from '../src/log.js';
 import {
@@ -139,19 +139,23 @@ export async function run(_args: string[]): Promise<void> {
   const configuredChannels = Object.keys(channelAuth);
   const anyChannelConfigured = configuredChannels.length > 0;
 
-  // 5. Check registered groups (using better-sqlite3, not sqlite3 CLI)
+  // 5. Check registered groups in v2 central DB (agent_groups + messaging_group_agents)
   let registeredGroups = 0;
-  const dbPath = path.join(STORE_DIR, 'messages.db');
+  const dbPath = path.join(DATA_DIR, 'v2.db');
   if (fs.existsSync(dbPath)) {
     try {
       const db = new Database(dbPath, { readonly: true });
+      // Count agent groups that have at least one messaging group wired
       const row = db
-        .prepare('SELECT COUNT(*) as count FROM registered_groups')
+        .prepare(
+          `SELECT COUNT(DISTINCT ag.id) as count FROM agent_groups ag
+           JOIN messaging_group_agents mga ON mga.agent_group_id = ag.id`,
+        )
         .get() as { count: number };
       registeredGroups = row.count;
       db.close();
     } catch {
-      // Table might not exist
+      // Table might not exist (DB not migrated yet)
     }
   }
 
