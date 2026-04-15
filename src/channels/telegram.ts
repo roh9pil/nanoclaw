@@ -115,8 +115,8 @@ function createPairingInterceptor(
   hostOnInbound: ChannelSetup['onInbound'],
   token: string,
 ): ChannelSetup['onInbound'] {
-  return (platformId, threadId, message) => {
-    void (async () => {
+  return async (platformId, threadId, message) => {
+    try {
       const botUsername = await botUsernamePromise;
       if (!botUsername) {
         hostOnInbound(platformId, threadId, message);
@@ -187,11 +187,11 @@ function createPairingInterceptor(
       });
 
       await sendPairingConfirmation(token, platformId);
-    })().catch((err) => {
+    } catch (err) {
       log.error('Telegram pairing interceptor error', { err });
       // Fail open: pass through so a pairing bug doesn't break normal traffic.
       hostOnInbound(platformId, threadId, message);
-    });
+    }
   };
 }
 

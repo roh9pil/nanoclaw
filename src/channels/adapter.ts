@@ -20,7 +20,11 @@ export interface ChannelSetup {
   conversations: ConversationConfig[];
 
   /** Called when an inbound message arrives from the platform. */
-  onInbound(platformId: string, threadId: string | null, message: InboundMessage): void;
+  onInbound(
+    platformId: string,
+    threadId: string | null,
+    message: InboundMessage,
+  ): void | Promise<void>;
 
   /** Called when the adapter discovers metadata about a conversation. */
   onMetadata(platformId: string, name?: string, isGroup?: boolean): void;

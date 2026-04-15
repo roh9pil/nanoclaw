@@ -165,20 +165,20 @@ export function createChatSdkBridge(config: ChatSdkBridgeConfig): ChannelAdapter
       // Subscribed threads — forward all messages
       chat.onSubscribedMessage(async (thread, message) => {
         const channelId = adapter.channelIdFromThreadId(thread.id);
-        setupConfig.onInbound(channelId, thread.id, await messageToInbound(message));
+        await setupConfig.onInbound(channelId, thread.id, await messageToInbound(message));
       });
 
       // @mention in unsubscribed thread — forward + subscribe
       chat.onNewMention(async (thread, message) => {
         const channelId = adapter.channelIdFromThreadId(thread.id);
-        setupConfig.onInbound(channelId, thread.id, await messageToInbound(message));
+        await setupConfig.onInbound(channelId, thread.id, await messageToInbound(message));
         await thread.subscribe();
       });
 
       // DMs — always forward + subscribe
       chat.onDirectMessage(async (thread, message) => {
         const channelId = adapter.channelIdFromThreadId(thread.id);
-        setupConfig.onInbound(channelId, null, await messageToInbound(message));
+        await setupConfig.onInbound(channelId, null, await messageToInbound(message));
         await thread.subscribe();
       });
 
