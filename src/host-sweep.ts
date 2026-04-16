@@ -101,7 +101,7 @@ async function sweepSession(session: Session): Promise<void> {
     }
 
     // 4. Handle recurrence for completed messages
-    handleRecurrence(inDb, session);
+    await handleRecurrence(inDb, session);
   } finally {
     inDb.close();
     outDb?.close();
