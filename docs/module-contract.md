@@ -4,23 +4,46 @@ This doc is the authoritative reference for how core and modules connect. Everyt
 
 ## Principles
 
-- Core runs standalone. The `src/modules/index.ts` barrel can be empty and NanoClaw still routes messages in and delivers responses out.
-- Modules are independent. No module imports from another module. Cross-module coordination goes through a core dispatcher.
+- Core runs standalone (modulo default modules — see tiers below). The optional-module portion of the `src/modules/index.ts` barrel can be empty and NanoClaw still routes messages in and delivers responses out.
+- Optional modules are independent. No optional module imports from another optional module. Cross-module coordination goes through a core registry (delivery action, response handler, etc.).
 - Registries exist only when multiple modules plug into the same decision point. Single-consumer integrations use skill edits (`MODULE-HOOK` markers) or stay inline with `sqlite_master` guards.
-- Removing a module = delete files + remove barrel imports + revert any `MODULE-HOOK` content. Migration files stay (data is preserved).
+- Removing an optional module = delete files + remove barrel imports + revert any `MODULE-HOOK` content. Migration files stay (data is preserved). Removing a default module is more invasive: it requires editing the core files that import from it.
 
 ## Module taxonomy
 
-Three categories:
+Three categories. All three live under `src/modules/` (or equivalent adapter dirs) with the same folder layout; the distinction is about **shipping** and **who can depend on them**.
 
-1. **Default modules** — ship on `main`, live in `src/modules/` for signaling, core imports them directly. No hook, no registry. Removing requires editing core imports (deliberately less frictionless than registry modules — the friction signals "not really core, but you probably want it").
-2. **Registry-based modules** — live on the `modules` branch, installed via `/add-<name>` skills. Plug into core through one of the four registries below.
-3. **Channel adapters** — live on the `channels` branch, installed via `/add-<channel>` skills. Not covered by this contract; they use the pre-existing `ChannelAdapter` interface and `registerChannelAdapter()`.
+### 1. Default modules
 
-Current default modules:
+Ship with `main` in `src/modules/`. Imported by the default `src/modules/index.ts` barrel from day one. They are not really core — they live under `src/modules/` specifically to signal "not really core, rippable if needed" — but they're always present on a `main` install. Core imports from them directly. No hook, no registry indirection for the exports themselves.
 
-- `src/modules/typing/` — typing indicator refresh
-- `src/modules/mount-security/` — container mount allowlist validation
+Current: `typing`, `mount-security`.
+
+### 2. Optional modules
+
+Live on the `modules` branch. Installed via `/add-<name>` skills that cherry-pick files. Register into core via one of the four registries (or `MODULE-HOOK` skill edits). Core and other optional modules must not statically import an optional module's code.
+
+Current: `interactive`, `approvals`, `scheduling`, `permissions`. Pending: `agent-to-agent`.
+
+### 3. Channel adapters
+
+Live on the `channels` branch, installed via `/add-<channel>` skills. Not covered by this contract; they use the pre-existing `ChannelAdapter` interface and `registerChannelAdapter()`.
+
+## Dependency rule
+
+```
+core ← default modules ← optional modules
+```
+
+- **Core** may import from core and from default modules.
+- **Default modules** may import from core and from other default modules. They must not import from optional modules.
+- **Optional modules** may import from core and from default modules. They must not import from each other.
+
+Peer-to-peer coupling between optional modules goes through a core registry — see "The four registries" below. This keeps the module dependency graph a DAG and install order irrelevant.
+
+### Known transitional violations
+
+- `src/access.ts` (core) imports from `src/modules/permissions/` (optional). Shim left from PR #5; resolved in the planned approvals re-tier (PR #7) which moves approver-picking into a new default `approvals-primitive` module that may then depend on permissions however it likes — at which point `src/access.ts` ceases to exist.
 
 ## The four registries
 

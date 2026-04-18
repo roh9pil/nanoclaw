@@ -32,12 +32,12 @@
  * channel on repeated calls, so re-resolving after a cache miss is always
  * safe — worst case we round-trip redundantly.
  */
-import { getChannelAdapter } from './channels/channel-registry.js';
-import { getMessagingGroup, getMessagingGroupByPlatform, createMessagingGroup } from './db/messaging-groups.js';
+import { getChannelAdapter } from '../../channels/channel-registry.js';
+import { getMessagingGroup, getMessagingGroupByPlatform, createMessagingGroup } from '../../db/messaging-groups.js';
+import { log } from '../../log.js';
+import type { MessagingGroup, User } from '../../types.js';
 import { getUser } from './db/users.js';
 import { getUserDm, upsertUserDm } from './db/user-dms.js';
-import { log } from './log.js';
-import type { MessagingGroup, User } from './types.js';
 
 /**
  * Return a messaging_group usable to DM this user, creating it lazily if

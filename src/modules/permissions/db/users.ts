@@ -1,5 +1,5 @@
-import type { User } from '../types.js';
-import { getDb } from './connection.js';
+import type { User } from '../../../types.js';
+import { getDb } from '../../../db/connection.js';
 
 export function createUser(user: User): void {
   getDb()

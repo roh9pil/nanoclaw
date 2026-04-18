@@ -1,56 +1,30 @@
 /**
- * Access control + approval routing.
+ * Approval routing helpers (temporary home).
  *
- * Privilege is user-level, not group-level. A user holds zero or more roles
- * (owner | admin) via `user_roles`, and is optionally "known" in specific
- * agent groups via `agent_group_members`. Admins are implicitly members of
- * the groups they administer.
+ * These functions pick an approver for a sensitive action and resolve the
+ * DM messaging_group they should be delivered to. They're called only from
+ * the approvals module.
  *
- * Sensitive actions trigger an approval flow, routed to the admin of the
- * originating agent group; if none, the owner. Approval delivery lands in
- * the approver's DM on (ideally) the same channel kind as the originating
- * request. DM resolution (including cold DMs) is handled by ensureUserDm.
+ * PR #5 moved the access-decision half of this file (canAccessAgentGroup +
+ * AccessDecision) into src/modules/permissions/. The approver-picking half
+ * stays here as a temporary shim — PR #7 relocates it into a new default
+ * approvals-primitive module alongside the approvals re-tier.
+ *
+ * Tier note: this file lives in core but imports from the permissions
+ * optional module. That's a deliberate temporary violation; see the module
+ * contract + REFACTOR_PLAN open question #3.
  */
-import { getAgentGroup } from './db/agent-groups.js';
-import { isMember } from './db/agent-group-members.js';
 import {
   getAdminsOfAgentGroup,
   getGlobalAdmins,
   getOwners,
-  hasAdminPrivilege,
-  isAdminOfAgentGroup,
-  isGlobalAdmin,
-  isOwner,
-} from './db/user-roles.js';
-import { getUser } from './db/users.js';
-import { ensureUserDm } from './user-dm.js';
+} from './modules/permissions/db/user-roles.js';
+import { ensureUserDm } from './modules/permissions/user-dm.js';
 import type { MessagingGroup } from './types.js';
-
-export type AccessDecision =
-  | { allowed: true; reason: 'owner' | 'global_admin' | 'admin_of_group' | 'member' }
-  | { allowed: false; reason: 'unknown_user' | 'not_member' };
-
-/** Can this user interact with this agent group? */
-export function canAccessAgentGroup(userId: string, agentGroupId: string): AccessDecision {
-  if (!getUser(userId)) return { allowed: false, reason: 'unknown_user' };
-  if (isOwner(userId)) return { allowed: true, reason: 'owner' };
-  if (isGlobalAdmin(userId)) return { allowed: true, reason: 'global_admin' };
-  if (isAdminOfAgentGroup(userId, agentGroupId)) return { allowed: true, reason: 'admin_of_group' };
-  if (isMember(userId, agentGroupId)) return { allowed: true, reason: 'member' };
-  return { allowed: false, reason: 'not_member' };
-}
-
-/** Can this user perform privileged (admin) operations on this agent group? */
-export function canAdminAgentGroup(userId: string, agentGroupId: string): boolean {
-  return hasAdminPrivilege(userId, agentGroupId);
-}
 
 /**
  * Ordered list of user IDs eligible to approve an action for the given agent
  * group. Preference: admins @ that group → global admins → owners.
- *
- * The approver-picking policy is to try local admins first (they have direct
- * context for the group), then fall back to global scope.
  */
 export function pickApprover(agentGroupId: string | null): string[] {
   const approvers: string[] = [];
@@ -98,15 +72,6 @@ export async function pickApprovalDelivery(
     if (mg) return { userId, messagingGroup: mg };
   }
   return null;
-}
-
-/**
- * Resolve the agent group id for a session's originating request. Used by
- * approval routing so we know which scope to pick admins from.
- */
-export function agentGroupIdForSession(sessionAgentGroupId: string | null): string | null {
-  if (!sessionAgentGroupId) return null;
-  return getAgentGroup(sessionAgentGroupId)?.id ?? null;
 }
 
 function channelTypeOf(userId: string): string {

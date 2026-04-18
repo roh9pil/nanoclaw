@@ -1,23 +1,15 @@
 import { beforeEach, afterEach, describe, expect, it } from 'vitest';
 
-import { canAccessAgentGroup, pickApprovalDelivery, pickApprover } from './access.js';
+import { pickApprovalDelivery, pickApprover } from './access.js';
 import type { ChannelAdapter, OutboundMessage } from './channels/adapter.js';
 import { initChannelAdapters, registerChannelAdapter, teardownChannelAdapters } from './channels/channel-registry.js';
-import {
-  addMember,
-  closeDb,
-  createAgentGroup,
-  createMessagingGroup,
-  createUser,
-  getUserDm,
-  grantRole,
-  hasAnyOwner,
-  initTestDb,
-  isMember,
-  isOwner,
-  runMigrations,
-} from './db/index.js';
-import { ensureUserDm } from './user-dm.js';
+import { closeDb, createAgentGroup, createMessagingGroup, initTestDb, runMigrations } from './db/index.js';
+import { canAccessAgentGroup } from './modules/permissions/access.js';
+import { addMember, isMember } from './modules/permissions/db/agent-group-members.js';
+import { createUser } from './modules/permissions/db/users.js';
+import { grantRole, hasAnyOwner, isOwner } from './modules/permissions/db/user-roles.js';
+import { getUserDm } from './modules/permissions/db/user-dms.js';
+import { ensureUserDm } from './modules/permissions/user-dm.js';
 
 function now(): string {
   return new Date().toISOString();

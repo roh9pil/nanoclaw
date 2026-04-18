@@ -14,7 +14,6 @@ import { readContainerConfig, writeContainerConfig } from './container-config.js
 import { CONTAINER_RUNTIME_BIN, hostGatewayArgs, readonlyMountArgs, stopContainer } from './container-runtime.js';
 import { getAgentGroup } from './db/agent-groups.js';
 import { getDb, hasTable } from './db/connection.js';
-import { getAdminsOfAgentGroup, getGlobalAdmins, getOwners } from './db/user-roles.js';
 import { initGroupFilesystem } from './group-init.js';
 import { stopTypingRefresh } from './modules/typing/index.js';
 import { log } from './log.js';
@@ -288,14 +287,26 @@ async function buildContainerArgs(
   // Computed at wake time: owners + global admins + admins scoped to this
   // agent group. Role changes take effect on next container spawn.
   //
-  // Guarded: if the permissions module isn't installed, `user_roles`
-  // doesn't exist and the set stays empty — the formatter treats an
-  // empty admin set as permissionless (every sender is admin).
+  // SQL inlined to keep core independent of the permissions module — we
+  // guard on the `user_roles` table directly. If the permissions module
+  // isn't installed, the table doesn't exist and the set stays empty; the
+  // formatter treats an empty admin set as permissionless mode (every
+  // sender is admin).
   const adminUserIds = new Set<string>();
   if (hasTable(getDb(), 'user_roles')) {
-    for (const r of getOwners()) adminUserIds.add(r.user_id);
-    for (const r of getGlobalAdmins()) adminUserIds.add(r.user_id);
-    for (const r of getAdminsOfAgentGroup(agentGroup.id)) adminUserIds.add(r.user_id);
+    const db = getDb();
+    const owners = db
+      .prepare("SELECT user_id FROM user_roles WHERE role = 'owner' AND agent_group_id IS NULL")
+      .all() as Array<{ user_id: string }>;
+    const globalAdmins = db
+      .prepare("SELECT user_id FROM user_roles WHERE role = 'admin' AND agent_group_id IS NULL")
+      .all() as Array<{ user_id: string }>;
+    const scopedAdmins = db
+      .prepare("SELECT user_id FROM user_roles WHERE role = 'admin' AND agent_group_id = ?")
+      .all(agentGroup.id) as Array<{ user_id: string }>;
+    for (const r of owners) adminUserIds.add(r.user_id);
+    for (const r of globalAdmins) adminUserIds.add(r.user_id);
+    for (const r of scopedAdmins) adminUserIds.add(r.user_id);
   }
   if (adminUserIds.size > 0) {
     args.push('-e', `NANOCLAW_ADMIN_USER_IDS=${Array.from(adminUserIds).join(',')}`);

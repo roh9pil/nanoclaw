@@ -1,5 +1,5 @@
-import type { AgentGroupMember } from '../types.js';
-import { getDb } from './connection.js';
+import type { AgentGroupMember } from '../../../types.js';
+import { getDb } from '../../../db/connection.js';
 import { isAdminOfAgentGroup, isGlobalAdmin, isOwner } from './user-roles.js';
 
 export function addMember(row: AgentGroupMember): void {

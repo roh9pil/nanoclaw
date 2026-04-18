@@ -1,5 +1,5 @@
-import type { UserRole, UserRoleKind } from '../types.js';
-import { getDb } from './connection.js';
+import type { UserRole, UserRoleKind } from '../../../types.js';
+import { getDb } from '../../../db/connection.js';
 
 /**
  * Grant a role. Owner rows must have agent_group_id = null (enforced here,

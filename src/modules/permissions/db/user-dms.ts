@@ -1,5 +1,5 @@
-import type { UserDm } from '../types.js';
-import { getDb } from './connection.js';
+import type { UserDm } from '../../../types.js';
+import { getDb } from '../../../db/connection.js';
 
 export function upsertUserDm(row: UserDm): void {
   getDb()
