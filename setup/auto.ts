@@ -122,7 +122,7 @@ async function askDisplayName(fallback: string): Promise<string> {
   const rl = createInterface({ input: process.stdin, output: process.stdout });
   try {
     const answer = await rl.question(
-      `\nWhat should the agent call you? [${fallback}]: `,
+      `\nWhat should your agents call you? [${fallback}]: `,
     );
     return answer.trim() || fallback;
   } finally {
