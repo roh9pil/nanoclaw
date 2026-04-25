@@ -22,6 +22,8 @@
  * headless `claude -p` call for IANA-zone resolution.
  */
 import { spawn, spawnSync } from 'child_process';
+import fs from 'fs';
+import path from 'path';
 
 import * as p from '@clack/prompts';
 import k from 'kleur';
@@ -605,17 +607,64 @@ async function runAuthStep(): Promise<void> {
           label: 'Paste an Anthropic API key',
           hint: 'pay-per-use via console.anthropic.com',
         },
+        {
+          value: 'local',
+          label: 'Connect to an Anthropic-compatible local server',
+          hint: 'configure ANTHROPIC_BASE_URL',
+        },
       ],
     }),
-  ) as 'subscription' | 'oauth' | 'api';
+  ) as 'subscription' | 'oauth' | 'api' | 'local';
   setupLog.userInput('auth_method', method);
   phEmit('auth_method_chosen', { method });
 
   if (method === 'subscription') {
     await runSubscriptionAuth();
+  } else if (method === 'local') {
+    await runLocalAuth();
   } else {
     await runPasteAuth(method);
   }
+}
+
+async function runLocalAuth(): Promise<void> {
+  const urlAnswer = ensureAnswer(
+    await p.text({
+      message: 'Enter your local server URL (ANTHROPIC_BASE_URL)',
+      placeholder: 'e.g. http://localhost:11434/v1',
+    })
+  ) as string;
+
+  const tokenAnswer = ensureAnswer(
+    await p.text({
+      message: 'Enter your auth token (ANTHROPIC_AUTH_TOKEN) or leave empty if none',
+    })
+  ) as string;
+
+  const envFile = path.join(process.cwd(), '.env');
+  let content = '';
+  if (fs.existsSync(envFile)) {
+    content = fs.readFileSync(envFile, 'utf-8');
+  }
+
+  const setEnvVar = (key: string, value: string) => {
+    const lineRegex = new RegExp(`^${key}=.*$`, 'm');
+    const newLine = `${key}=${value}`;
+    if (lineRegex.test(content)) {
+      content = content.replace(lineRegex, newLine);
+    } else {
+      const sep = content && !content.endsWith('\n') ? '\n' : '';
+      content = content + sep + newLine + '\n';
+    }
+  };
+
+  setEnvVar('ANTHROPIC_BASE_URL', urlAnswer.trim());
+  if (tokenAnswer.trim()) {
+    setEnvVar('ANTHROPIC_AUTH_TOKEN', tokenAnswer.trim());
+  }
+
+  fs.writeFileSync(envFile, content);
+  p.log.success('Local server config saved to .env');
 }
 
 async function runSubscriptionAuth(): Promise<void> {
@@ -869,6 +918,13 @@ async function askChannelChoice(): Promise<ChannelChoice> {
 // ─── interactive / env helpers ─────────────────────────────────────────
 
 function anthropicSecretExists(): boolean {
+  try {
+    const envPath = path.join(process.cwd(), '.env');
+    if (fs.existsSync(envPath)) {
+      const content = fs.readFileSync(envPath, 'utf-8');
+      if (/^ANTHROPIC_BASE_URL=/m.test(content)) return true;
+    }
+  } catch {}
   try {
     const res = spawnSync('onecli', ['secrets', 'list'], {
       encoding: 'utf-8',
