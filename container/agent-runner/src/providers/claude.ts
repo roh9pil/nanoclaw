@@ -252,6 +252,30 @@ export class ClaudeProvider implements AgentProvider {
       ...(options.env ?? {}),
       CLAUDE_CODE_AUTO_COMPACT_WINDOW,
     };
+
+    // If a fallback auth token is provided via env, map it to the API key variable
+    // the SDK uses natively, so it properly injects it as an x-api-key header.
+    if (this.env.ANTHROPIC_AUTH_TOKEN && !this.env.ANTHROPIC_API_KEY) {
+      this.env.ANTHROPIC_API_KEY = this.env.ANTHROPIC_AUTH_TOKEN;
+    }
+  }
+
+  // Create a custom fetch that injects the x-api-key header for Anthropic-compatible servers
+  private getCustomFetch(): any {
+    const overrideToken = this.env.ANTHROPIC_AUTH_TOKEN;
+    if (!overrideToken) return undefined;
+
+    return async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+      const headers = new Headers(init?.headers);
+      headers.set('x-api-key', overrideToken);
+
+      const newInit: RequestInit = {
+        ...init,
+        headers,
+      };
+
+      return globalThis.fetch(input, newInit);
+    };
   }
 
   isSessionInvalid(err: unknown): boolean {
@@ -286,7 +310,8 @@ export class ClaudeProvider implements AgentProvider {
           PostToolUseFailure: [{ hooks: [postToolUseHook] }],
           PreCompact: [{ hooks: [createPreCompactHook(this.assistantName)] }],
         },
-      },
+        fetch: this.getCustomFetch(),
+      } as any,
     });
 
     let aborted = false;

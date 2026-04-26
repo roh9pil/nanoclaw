@@ -638,6 +638,7 @@ async function runLocalAuth(): Promise<void> {
   const tokenAnswer = ensureAnswer(
     await p.text({
       message: 'Enter your auth token (ANTHROPIC_AUTH_TOKEN) or leave empty if none',
+      hint: 'passed to the server in the X-API-KEY header',
     })
   ) as string;
 
