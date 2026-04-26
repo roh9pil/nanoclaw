@@ -12,6 +12,7 @@
  * structured status block. The token value is never logged.
  */
 import { execFileSync } from 'child_process';
+import fs from 'fs';
 import os from 'os';
 import path from 'path';
 
@@ -132,11 +133,19 @@ export async function run(args: string[]): Promise<void> {
 
   const existing = findAnthropicSecret(secrets);
 
+  const envPath = path.join(process.cwd(), '.env');
+  let hasLocalBase = false;
+  if (fs.existsSync(envPath)) {
+    const content = fs.readFileSync(envPath, 'utf-8');
+    hasLocalBase = /^ANTHROPIC_BASE_URL=/m.test(content);
+  }
+
   if (mode === 'check') {
+    const isAuthOk = !!existing || hasLocalBase;
     emitStatus('AUTH', {
-      SECRET_PRESENT: !!existing,
-      ANTHROPIC_OK: !!existing,
-      STATUS: existing ? 'success' : 'missing',
+      SECRET_PRESENT: isAuthOk,
+      ANTHROPIC_OK: isAuthOk,
+      STATUS: isAuthOk ? 'success' : 'missing',
       ...(existing ? { SECRET_NAME: existing.name, SECRET_ID: existing.id } : {}),
       LOG: 'logs/setup.log',
     });

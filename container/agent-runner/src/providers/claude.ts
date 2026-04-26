@@ -252,6 +252,12 @@ export class ClaudeProvider implements AgentProvider {
       ...(options.env ?? {}),
       CLAUDE_CODE_AUTO_COMPACT_WINDOW,
     };
+
+    // If a fallback auth token is provided via env, map it to the API key variable
+    // the SDK uses natively, so it properly injects it as an x-api-key header.
+    if (this.env.ANTHROPIC_AUTH_TOKEN && !this.env.ANTHROPIC_API_KEY) {
+      this.env.ANTHROPIC_API_KEY = this.env.ANTHROPIC_AUTH_TOKEN;
+    }
   }
 
   isSessionInvalid(err: unknown): boolean {
