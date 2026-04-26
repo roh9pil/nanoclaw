@@ -260,24 +260,6 @@ export class ClaudeProvider implements AgentProvider {
     }
   }
 
-  // Create a custom fetch that injects the x-api-key header for Anthropic-compatible servers
-  private getCustomFetch(): any {
-    const overrideToken = this.env.ANTHROPIC_AUTH_TOKEN;
-    if (!overrideToken) return undefined;
-
-    return async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
-      const headers = new Headers(init?.headers);
-      headers.set('x-api-key', overrideToken);
-
-      const newInit: RequestInit = {
-        ...init,
-        headers,
-      };
-
-      return globalThis.fetch(input, newInit);
-    };
-  }
-
   isSessionInvalid(err: unknown): boolean {
     const msg = err instanceof Error ? err.message : String(err);
     return STALE_SESSION_RE.test(msg);
@@ -310,8 +292,7 @@ export class ClaudeProvider implements AgentProvider {
           PostToolUseFailure: [{ hooks: [postToolUseHook] }],
           PreCompact: [{ hooks: [createPreCompactHook(this.assistantName)] }],
         },
-        fetch: this.getCustomFetch(),
-      } as any,
+      },
     });
 
     let aborted = false;
