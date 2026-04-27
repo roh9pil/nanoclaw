@@ -434,6 +434,20 @@ async function buildContainerArgs(
     }
   }
 
+  // Per-agent-group env overrides — applied last to win over OneCLI values.
+  if (containerConfig.env) {
+    for (const [key, value] of Object.entries(containerConfig.env)) {
+      args.push('-e', `${key}=${value}`);
+    }
+  }
+
+  // Blocked hosts: resolve to 0.0.0.0 so they are unreachable inside the container.
+  if (containerConfig.blockedHosts) {
+    for (const host of containerConfig.blockedHosts) {
+      args.push('--add-host', `${host}:0.0.0.0`);
+    }
+  }
+
   // OneCLI gateway — injects HTTPS_PROXY + certs so container API calls
   // are routed through the agent vault for credential injection.
   try {
