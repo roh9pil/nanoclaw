@@ -450,6 +450,20 @@ async function buildContainerArgs(
     log.warn('OneCLI gateway error — container will have no credentials', { containerName, err });
   }
 
+  // Explicit env vars from container.json override any injected by the proxy
+  if (containerConfig.env) {
+    for (const [key, value] of Object.entries(containerConfig.env)) {
+      args.push('-e', `${key}=${value}`);
+    }
+  }
+
+  // Blocked hosts
+  if (containerConfig.blockedHosts) {
+    for (const host of containerConfig.blockedHosts) {
+      args.push('--add-host', `${host}:0.0.0.0`);
+    }
+  }
+
   // Host gateway
   args.push(...hostGatewayArgs());
 
