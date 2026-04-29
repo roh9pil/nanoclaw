@@ -5,6 +5,10 @@
  * start delivery polls, start sweep, handle shutdown.
  */
 import path from 'path';
+import { setGlobalDispatcher, EnvHttpProxyAgent } from 'undici';
+
+// Make all native fetch calls respect HTTP_PROXY / HTTPS_PROXY
+setGlobalDispatcher(new EnvHttpProxyAgent());
 
 import { DATA_DIR } from './config.js';
 import { migrateGroupsToClaudeLocal } from './claude-md-compose.js';
